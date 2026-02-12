@@ -1,25 +1,102 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Voice Chat</title>
+    <meta charset="UTF-8">
+    <title>Voice & Text Chat</title>
     <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h2 {
+            color: #333;
+        }
+
+        #chat {
+            width: 400px;
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+        }
+
+        #chat p {
+            margin: 5px 0;
+        }
+
+        #messageBox {
+            display: flex;
+            width: 400px;
+        }
+
+        #messageBox input {
+            flex: 1;
+            padding: 8px;
+            border-radius: 5px 0 0 5px;
+            border: 1px solid #ccc;
+            outline: none;
+        }
+
+        #messageBox button {
+            padding: 8px 15px;
+            border: 1px solid #ccc;
+            border-left: none;
+            border-radius: 0 5px 5px 0;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+
+        #messageBox button:hover {
+            background-color: #45a049;
+        }
+
+        button#startCall {
+            margin-bottom: 10px;
+            padding: 10px 20px;
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button#startCall:hover {
+            background-color: #007bb5;
+        }
+    </style>
 </head>
 <body>
 
-<h2>Voice Chat</h2>
-<button onclick="startCall()">Start Call</button>
+<h2>Voice & Text Chat</h2>
+
+<button id="startCall">Start Call</button>
+
+<div id="chat"></div>
+
+<div id="messageBox">
+    <input id="message" type="text" placeholder="Напиши повідомлення...">
+    <button onclick="sendMessage()">Send</button>
+</div>
 
 <script>
 const socket = io();
 let peerConnection;
 let localStream;
 
+// TURN + STUN сервери
 const config = {
     iceServers: [
-        // STUN сервер Google
         { urls: "stun:stun.l.google.com:19302" },
-
-        // TURN сервер OpenRelay
         {
             urls: "turn:openrelay.metered.ca:80",
             username: "openrelayproject",
@@ -33,15 +110,12 @@ const config = {
     ]
 };
 
-
-async function startCall() {
+// Запуск голосового виклику
+document.getElementById("startCall").onclick = async () => {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
     peerConnection = new RTCPeerConnection(config);
-
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
@@ -50,36 +124,43 @@ async function startCall() {
     };
 
     peerConnection.ontrack = event => {
-        const audio = document.createElement("audio");
+        let audio = document.createElement("audio");
         audio.srcObject = event.streams[0];
         audio.autoplay = true;
     };
 
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
-
     socket.emit("signal", { offer: offer });
+};
+
+// Текстовий чат
+function sendMessage() {
+    const input = document.getElementById("message");
+    if(input.value.trim() === "") return;
+    socket.emit("message", input.value);
+    input.value = "";
 }
 
+socket.on("message", msg => {
+    const chat = document.getElementById("chat");
+    const p = document.createElement("p");
+    p.innerText = msg;
+    chat.appendChild(p);
+    chat.scrollTop = chat.scrollHeight;
+});
+
+// Сигнали WebRTC
 socket.on("signal", async data => {
-
     if (!peerConnection) {
-        peerConnection = new RTCPeerConnection(config);
-
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-
+        peerConnection = new RTCPeerConnection(config);
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
         peerConnection.onicecandidate = event => {
-            if (event.candidate) {
-                socket.emit("signal", { candidate: event.candidate });
-            }
+            if (event.candidate) socket.emit("signal", { candidate: event.candidate });
         };
-
         peerConnection.ontrack = event => {
-            const audio = document.createElement("audio");
+            let audio = document.createElement("audio");
             audio.srcObject = event.streams[0];
             audio.autoplay = true;
         };
@@ -104,4 +185,3 @@ socket.on("signal", async data => {
 
 </body>
 </html>
-
